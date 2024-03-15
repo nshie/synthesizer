@@ -2,14 +2,14 @@ import wave
 import numpy as np
 from scipy import signal
 import pyaudio
-
+import time
 
 
 class Synthesizer():
     SAMPLE_RATE = 44100
-    MIN_FREQUENCY = 60
+    MIN_FREQUENCY = 200
     MIN_DURATION = 1/MIN_FREQUENCY
-    MIN_BUFFER_SIZE = int(SAMPLE_RATE * MIN_DURATION)
+    MIN_BUFFER_SIZE = int(SAMPLE_RATE / MIN_FREQUENCY)
 
     '''
     C       C#      D       D#      E       F       F#      G       G#      A       A#      B '''
@@ -38,11 +38,11 @@ class Synthesizer():
 
     # An on-going array tracking time
     cycles = 0
-    #startT = np.linspace(0, (MIN_BUFFER_SIZE / SAMPLE_RATE), MIN_BUFFER_SIZE, endpoint=False)
     t = np.linspace(0, MIN_DURATION, MIN_BUFFER_SIZE, endpoint=False)
 
     # Controlling the sound
     notesPlaying = [False] * len(pitchFrequencies)
+    wavesPlaying = [t] * len(pitchFrequencies)
     volume = 1
     cutoff = 1
     waveforms = ["Sine", "Saw", "Square", "Triangle"]
@@ -56,13 +56,18 @@ class Synthesizer():
     # Declicking
     buffer = np.zeros(MIN_BUFFER_SIZE)
     
+    # External
+    updateFunctions = []
+
+    # Debugging
+    start = 0
 
     ''' <-------------------- INTERNAL FUNCTIONS --------------------> '''
     # Returns a numpy array with the same size as t
-    def wave(self, frequency):
+    def wave(self, frequency, timeArray):
         wave = 0
 
-        inputArray1 = 2 * np.pi * frequency * self.t * self.dollarsToFrequencyRatio(self.oscillator1Pitch)
+        inputArray1 = 2 * np.pi * frequency * timeArray * self.dollarsToFrequencyRatio(self.oscillator1Pitch)
 
         match self.oscillator1Waveform:
             case self.SINE:
@@ -76,8 +81,8 @@ class Synthesizer():
             case _:
                 pass
 
-        inputArray2 = 2 * np.pi * frequency * self.t * self.dollarsToFrequencyRatio(self.oscillator2Pitch)
-
+        inputArray2 = 2 * np.pi * frequency * timeArray * self.dollarsToFrequencyRatio(self.oscillator2Pitch)
+        
         match self.oscillator2Waveform:
             case self.SINE:
                 wave += np.sin(inputArray2) * (1 - self.oscillatorRatio)
@@ -90,10 +95,41 @@ class Synthesizer():
             case _:
                 pass
 
+        '''
+        cutoffImpulseIR = self.generateCutoffImpulseResponse(self.cutoff*5000, self.MIN_DURATION, self.MIN_BUFFER_SIZE)
+        wave = np.convolve(wave, cutoffImpulseIR, 'valid')
+        '''
+
+        '''
+        Wave = np.fft.rfft(wave)
+        index = int(max(0, self.cutoff*(len(wave) - 1)))
+        #Wave[index:] = 0
+        Wave = Wave * self.cutoffFilter(self.cutoff, 10 ** 5, 1, len(Wave))
+        wave = np.fft.irfft(Wave, len(timeArray))
+        '''
+
+        if (self.cutoff < 1):
+            wave = self.applyCutoffFilter(wave, self.cutoff/1.053 + 0.05)
+            
         return wave
 
+    def applyCutoffFilter(self, wave, cutoffFrequency):
+        b, a = signal.butter(8, cutoffFrequency /1.12 + 0.1)
+        return signal.filtfilt(b, a, wave, padlen=150)
+
+    def cutoffFilter(self, cutoffFrequency, steepness, duration, filterLength):
+        return (1 - 0.1 * steepness ** (np.linspace(0, duration, filterLength) - cutoffFrequency))
+
     def generateTimeArray(self, cycle):
-        return np.linspace(cycle / self.MIN_FREQUENCY, (cycle + 1) / self.MIN_FREQUENCY, self.MIN_BUFFER_SIZE, endpoint=False)
+        '''
+        out = np.empty(shape=self.MIN_BUFFER_SIZE, dtype=float)
+        startIndex = cycle * self.MIN_BUFFER_SIZE
+        for i in range(len(out)):
+            out[i] = (startIndex + i) / self.MIN_FREQUENCY / self.MIN_BUFFER_SIZE
+        #'''
+        out = np.linspace(cycle / self.MIN_FREQUENCY, (cycle + 1) / self.MIN_FREQUENCY, self.MIN_BUFFER_SIZE, endpoint=False)
+        #print(out[0])
+        return out
 
     # a fun nod to the fact that values being passed in are 100 cents and not 1 cent
     def dollarsToFrequencyRatio(self, dollars):
@@ -110,27 +146,38 @@ class Synthesizer():
         self.pya = pyaudio.PyAudio()
         
         def callback(in_data, frame_count, time_info, status):
+            #'''
+            difference = time.process_time() - self.start
+            if (difference != 0):
+                pass#print(difference)
             wave = np.zeros(self.MIN_BUFFER_SIZE)
 
             # sum the notes being played
+            maxAmplitude = 0
             for i in range(len(self.pitchFrequencies)):
                 if (self.notesPlaying[i] == True):
-                    newWave = self.wave(self.pitchFrequencies[i])
+                    newWave = self.wave(self.pitchFrequencies[i], self.t)
                     wave = np.add(wave, newWave)
+                    maxAmplitude += 1
 
             # normalize
-            maxAmplitude = wave.max()
-            if (not maxAmplitude == 0):
-                wave = wave / wave.max() * self.volume
+            divider = max(5, maxAmplitude)
+            wave = wave / divider
+                
+            wave = wave * self.volume
 
-            print(f"{self.t[-1] - (self.cycles + 1 - 1/self.SAMPLE_RATE) / self.MIN_FREQUENCY}")
+            self.buffer = wave
+
+            # run any external methods necessary
+            for function in self.updateFunctions:
+                function()
 
             self.cycles += 1
-            self.t = self.generateTimeArray(self.cycles)#np.linspace(self.cycles / self.MIN_FREQUENCY, (self.cycles + 1) / self.MIN_FREQUENCY, self.MIN_BUFFER_SIZE)
-            #self.t = np.linspace(self.cycles / self.MIN_FREQUENCY, (self.cycles + 1) / self.MIN_FREQUENCY, self.MIN_BUFFER_SIZE)
-            #print(self.t)
+            self.t = self.generateTimeArray(self.cycles)
 
             bytestream = (wave * 32767).astype("<h").tobytes()
+            #bytestream = wave.astype(np.int16).tobytes()
+            self.start = time.process_time()
             return (bytestream, pyaudio.paContinue)
 
         self.stream = self.pya.open(format=self.pya.get_format_from_width(width=2),
@@ -171,6 +218,9 @@ class Synthesizer():
         self.notesPlaying[note] = True
 
 
+    def addUpdateFunction(self, function):
+        self.updateFunctions.append(function)
+
     def stopNote(self, note):
         if note < 0 or note >= len(self.pitchFrequencies):
             return
@@ -197,8 +247,36 @@ class Synthesizer():
         self.oscillatorRatio = max(0, min(percentage, 1))
 
     def setCutoff(self, percentage):
-        pass
+        self.cutoff = percentage
     
+    def generateWavePlotData(self):
+        return self.wave(800, np.linspace(0, 1/100, 1000))
+    
+    def generateFrequencyPlotData(self):
+        frequencyDomain = np.abs(np.fft.rfft(self.wave(800, np.linspace(0, 1, 10000)), 1000))
+        return frequencyDomain / frequencyDomain.max()
+
+    def generateSpectrogramData(self):
+        dataLength = 12000
+
+        wave = np.zeros(dataLength)
+
+        # sum the notes being played
+        for i in range(len(self.pitchFrequencies)):
+            if (self.notesPlaying[i] == True):
+                newWave = self.wave(self.pitchFrequencies[i], np.linspace(0, 1, dataLength))
+                wave = np.add(wave, newWave)
+
+        # normalize
+        maxAmplitude = wave.max()
+        if (not maxAmplitude == 0 and maxAmplitude > 1):
+            wave = wave / maxAmplitude
+            
+        wave = wave * self.volume
+
+        data = np.abs(np.fft.rfft(wave, 1000) / 4) + 0.0000000001
+        clipped = np.maximum(20 * np.log10(data), -10)
+        return clipped[:len(clipped) * 4 // 7]
     '''
     duration = 3
     t = np.linspace(0, duration, SAMPLE_RATE * duration)

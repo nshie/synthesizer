@@ -1,2 +1,2 @@
-# synthesizer
- A simple synthesizer
+# 2xOsc
+A simple synthesizer
