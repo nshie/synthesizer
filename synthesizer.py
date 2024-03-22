@@ -1,4 +1,3 @@
-import wave
 import numpy as np
 from scipy import signal
 import pyaudio
@@ -53,14 +52,8 @@ class Synthesizer():
     oscillator2Pitch = 0
     oscillatorRatio = 0.5
 
-    # Declicking
+    # Previous data
     buffer = np.zeros(MIN_BUFFER_SIZE)
-    
-    # External
-    updateFunctions = []
-
-    # Debugging
-    start = 0
 
     ''' <-------------------- INTERNAL FUNCTIONS --------------------> '''
     # Returns a numpy array with the same size as t
@@ -95,45 +88,30 @@ class Synthesizer():
             case _:
                 pass
 
-        '''
-        cutoffImpulseIR = self.generateCutoffImpulseResponse(self.cutoff*5000, self.MIN_DURATION, self.MIN_BUFFER_SIZE)
-        wave = np.convolve(wave, cutoffImpulseIR, 'valid')
-        '''
-
-        '''
-        Wave = np.fft.rfft(wave)
-        index = int(max(0, self.cutoff*(len(wave) - 1)))
-        #Wave[index:] = 0
-        Wave = Wave * self.cutoffFilter(self.cutoff, 10 ** 5, 1, len(Wave))
-        wave = np.fft.irfft(Wave, len(timeArray))
-        '''
-
         if (self.cutoff < 1):
             wave = self.applyCutoffFilter(wave, self.cutoff/1.053 + 0.05)
             
         return wave
 
+
     def applyCutoffFilter(self, wave, cutoffFrequency):
         b, a = signal.butter(8, cutoffFrequency /1.12 + 0.1)
         return signal.filtfilt(b, a, wave, padlen=150)
 
+
     def cutoffFilter(self, cutoffFrequency, steepness, duration, filterLength):
         return (1 - 0.1 * steepness ** (np.linspace(0, duration, filterLength) - cutoffFrequency))
 
+
     def generateTimeArray(self, cycle):
-        '''
-        out = np.empty(shape=self.MIN_BUFFER_SIZE, dtype=float)
-        startIndex = cycle * self.MIN_BUFFER_SIZE
-        for i in range(len(out)):
-            out[i] = (startIndex + i) / self.MIN_FREQUENCY / self.MIN_BUFFER_SIZE
-        #'''
         out = np.linspace(cycle / self.MIN_FREQUENCY, (cycle + 1) / self.MIN_FREQUENCY, self.MIN_BUFFER_SIZE, endpoint=False)
-        #print(out[0])
         return out
+
 
     # a fun nod to the fact that values being passed in are 100 cents and not 1 cent
     def dollarsToFrequencyRatio(self, dollars):
         return 2 ** (dollars / 12)
+
 
     ''' <-------------------- EXTERNAL FUNCTIONS --------------------> '''
     def arm(self):
@@ -146,10 +124,6 @@ class Synthesizer():
         self.pya = pyaudio.PyAudio()
         
         def callback(in_data, frame_count, time_info, status):
-            #'''
-            difference = time.process_time() - self.start
-            if (difference != 0):
-                pass#print(difference)
             wave = np.zeros(self.MIN_BUFFER_SIZE)
 
             # sum the notes being played
@@ -168,15 +142,10 @@ class Synthesizer():
 
             self.buffer = wave
 
-            # run any external methods necessary
-            for function in self.updateFunctions:
-                function()
-
             self.cycles += 1
             self.t = self.generateTimeArray(self.cycles)
 
             bytestream = (wave * 32767).astype("<h").tobytes()
-            #bytestream = wave.astype(np.int16).tobytes()
             self.start = time.process_time()
             return (bytestream, pyaudio.paContinue)
 
@@ -188,7 +157,7 @@ class Synthesizer():
                         stream_callback=callback)
     
         self.armed = True
-        print("Arming synthesizer...")
+
 
     def dearm(self):
         if self.stream:
@@ -199,7 +168,7 @@ class Synthesizer():
             self.pya.terminate()
 
         self.armed = False
-        print("De-arming synthesizer...")
+
 
     def playNote(self, note):
         if not self.armed:
@@ -208,18 +177,8 @@ class Synthesizer():
         if note < 0 or note >= len(self.pitchFrequencies):
             return
 
-        #E[:SAMPLE_RATE * duration // 2] = 0
-
-        #samplerate, reverbIR = wavfile.read('ConradPrebysConcertHallSeatF111.wav')
-        #reverbIR = reverbIR[ : , 0]
-        #reverbIRFloat = reverbIR.astype(np.float32)
-        #reverbIRFloat = reverbIRFloat / reverbIRFloat.max()
-
         self.notesPlaying[note] = True
 
-
-    def addUpdateFunction(self, function):
-        self.updateFunctions.append(function)
 
     def stopNote(self, note):
         if note < 0 or note >= len(self.pitchFrequencies):
@@ -227,34 +186,43 @@ class Synthesizer():
 
         self.notesPlaying[note] = False
 
+
     def setVolume(self, value):
         self.volume = value
-        print(f'set synthesizer volume to {value}')
+
 
     def setOscillator1Waveform(self, waveform):
         self.oscillator1Waveform = waveform
 
+
     def setOscillator2Waveform(self, waveform):
         self.oscillator2Waveform = waveform
+
 
     def setOscillator1Pitch(self, cents):
         self.oscillator1Pitch = cents
 
+
     def setOscillator2Pitch(self, cents):
         self.oscillator2Pitch = cents
+
 
     def setOscillatorRatio(self, percentage):
         self.oscillatorRatio = max(0, min(percentage, 1))
 
+
     def setCutoff(self, percentage):
         self.cutoff = percentage
     
+
     def generateWavePlotData(self):
         return self.wave(800, np.linspace(0, 1/100, 1000))
     
+
     def generateFrequencyPlotData(self):
         frequencyDomain = np.abs(np.fft.rfft(self.wave(800, np.linspace(0, 1, 10000)), 1000))
         return frequencyDomain / frequencyDomain.max()
+
 
     def generateSpectrogramData(self):
         dataLength = 12000
@@ -277,50 +245,3 @@ class Synthesizer():
         data = np.abs(np.fft.rfft(wave, 1000) / 4) + 0.0000000001
         clipped = np.maximum(20 * np.log10(data), -10)
         return clipped[:len(clipped) * 4 // 7]
-    '''
-    duration = 3
-    t = np.linspace(0, duration, SAMPLE_RATE * duration)
-    Ahz = 440
-    A = 0.25 * np.sin(2 * np.pi * Ahz * t)
-    C = 0.25 * np.sin(2 * np.pi * Ahz * 6 / 5 * t)
-    E = 0.25 * np.sin(2 * np.pi * Ahz * 1.5 * t)
-    #E[:SAMPLE_RATE * duration // 2] = 0
-
-    SAMPLE_RATE, reverbIR = wavfile.read('ConradPrebysConcertHallSeatF111.wav')
-    reverbIR = reverbIR[ : , 0]
-    #reverbIRFloat = reverbIR.astype(np.float32)
-    #reverbIRFloat = reverbIRFloat / reverbIRFloat.max()
-
-    compose = A + C + E
-    #compose[SAMPLE_RATE:duration * SAMPLE_RATE] = 0
-
-    rawMax = compose.max()
-
-    #Compose = np.fft.rfft(compose)
-    #ReverbFR = np.fft.rfft(reverbIR)
-    #desiredLength = len(Compose) + len(ReverbFR) - 1
-    #Compose = np.pad(Compose, (0, desiredLength - len(Compose)), 'constant')
-    #ReverbFR = np.pad(ReverbFR, (0, desiredLength - len(ReverbFR)), 'constant')
-
-    #Filtered = Compose * ReverbFR
-
-    #compose = np.fft.irfft(Filtered)
-
-    compose = np.convolve(compose, reverbIR, 'full')
-    compose = compose[len(reverbIR) : ]
-    compose = compose * (rawMax / compose.max())
-
-    # Put the audio together with shape (1, 44100).
-    audio = np.array([compose]).T
-
-    # Convert to (little-endian) 16 bit integers.
-    audio = (audio * (2 ** 15 - 1)).astype("<h")
-
-    with wave.open("sound1.wav", "w") as f:
-        # 2 Channels.
-        f.setnchannels(1)
-        # 2 bytes per sample.
-        f.setsampwidth(2)
-        f.setframerate(SAMPLE_RATE)
-        f.writeframes(audio.tobytes())
-    '''

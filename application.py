@@ -1,7 +1,6 @@
 import sys
 import numpy as np
 from PyQt6.QtWidgets import *
-from PyQt6.QtGui import QAction, QIcon, QTransform
 from PyQt6.QtCore import *
 from synthesizer import *
 import pyqtgraph as pg
@@ -21,7 +20,6 @@ class CustomComboBox(QComboBox):
             
 
 class MainWindow(QMainWindow):
-
     synthesizer = Synthesizer()
     synthesizer.arm()
 
@@ -36,10 +34,9 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.initUI()
-        #self.synthesizer.addUpdateFunction(self.updateSpectrogramWidget)
         self.timer = QTimer(self)
         self.timer.setSingleShot(False)
-        self.timer.setInterval(50) # in milliseconds, so 5000 = 5 seconds
+        self.timer.setInterval(50) # spectrogram update interval (in ms)
         self.timer.timeout.connect(self.updateSpectrogramWidget)
         self.timer.start()
 
@@ -60,10 +57,6 @@ class MainWindow(QMainWindow):
 
         '''UPPER OSCILLATOR LAYOUT'''
         soundDesignLayout = QGridLayout()
-        #upperOscillatorsTabLayout.setRowStretch(0, 1)
-        #upperOscillatorsTabLayout.setRowStretch(1, 1)
-        #upperOscillatorsTabLayout.setRowStretch(2, 1)
-        #upperOscillatorsTabLayout.setRowStretch(3, 1)
         oscillatorsTabLayout.addLayout(soundDesignLayout)
 
         # oscillator 1 waveform selector
@@ -71,7 +64,7 @@ class MainWindow(QMainWindow):
         oscillator1DropDownLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
         soundDesignLayout.addWidget(oscillator1DropDownLabel, 0, 0)
 
-        oscillator1DropDown = CustomComboBox()#QComboBox()
+        oscillator1DropDown = CustomComboBox()
         oscillator1DropDown.addItems(Synthesizer.waveforms)
         oscillator1DropDown.setCurrentIndex(0)
         oscillator1DropDown.activated.connect(self.oscillator1ShapeChanged)
@@ -82,7 +75,7 @@ class MainWindow(QMainWindow):
         oscillator2DropDownLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
         soundDesignLayout.addWidget(oscillator2DropDownLabel, 2, 0)
 
-        oscillator2DropDown = CustomComboBox()#QComboBox()
+        oscillator2DropDown = CustomComboBox()
         oscillator2DropDown.addItems(Synthesizer.waveforms)
         oscillator2DropDown.setCurrentIndex(0)
         oscillator2DropDown.activated.connect(self.oscillator2ShapeChanged)
@@ -163,11 +156,10 @@ class MainWindow(QMainWindow):
         self.spectrogramWidget.ui.menuBtn.hide()
         self.spectrogramWidget.ui.histogram.hide()
         self.spectrogramWidget.setImage(self.spectrogramImage)
-        #self.spectogramWidget.scene().sigMouseClicked.connect()
 
         # bipolar colormap
         pos = np.array([0., 1., 0.5, 0.15, 0.75])
-        colors = [(0,255,255), (255,255,0), (0, 0, 0)x, (0, 0, 255), (255, 0, 0)]
+        colors = [(0,255,255), (255,255,0), (0, 0, 0), (0, 0, 255), (255, 0, 0)]
         cmap = pg.ColorMap(pos=pos, color=colors)
         self.spectrogramWidget.imageItem.setColorMap(cmap)
         self.spectrogramWidget.imageItem.setLevels([-50,40])
@@ -177,44 +169,50 @@ class MainWindow(QMainWindow):
 
         tabwidget.addTab(oscillatorsTab, "Oscillators")
 
-        #tabwidget.currentChanged.connect(self.onChange)
 
     def volumeChanged(self):
         self.synthesizer.setVolume(self.volumeDial.value() / 100)
         self.updatePlotWidget()
+
 
     def oscillator1ShapeChanged(self, index):
         self.synthesizer.setOscillator1Waveform(index)
         self.updatePlotWidget()
         self.setFocus()
     
+
     def oscillator2ShapeChanged(self, index):
         self.synthesizer.setOscillator2Waveform(index)
         self.updatePlotWidget()
         self.setFocus()
 
+
     def oscillator1PitchChanged(self, index):
         self.synthesizer.setOscillator1Pitch(index)
         self.updatePlotWidget()
     
+
     def oscillator2PitchChanged(self, index):
         self.synthesizer.setOscillator2Pitch(index)
         self.updatePlotWidget()
+
 
     def ratioChanged(self):
         self.synthesizer.setOscillatorRatio(self.oscillatorRatioSlider.value() / 100)
         self.updatePlotWidget()
     
+
     def cutoffChanged(self):
         self.synthesizer.setCutoff(self.cutoffDial.value() / 100)
-        print(f"set the cutoff to {self.cutoffDial.value() / 100}")
         self.updatePlotWidget()
+
 
     def updatePlotWidget(self):
         if self.plotWidgetMode == 0:
             self.updateWavePlot()
         else:
             self.updateFrequencyPlot()
+
 
     def updateWavePlot(self):
         data = self.synthesizer.generateWavePlotData() * self.synthesizer.volume
@@ -225,6 +223,7 @@ class MainWindow(QMainWindow):
         self.plotWidget.plotItem.clear()
         self.plotWidget.plotItem.plot(data, pen=pg.mkPen(self.plotLineColor, width=self.plotLineWidth))
 
+
     def updateFrequencyPlot(self):
         data = self.synthesizer.generateFrequencyPlotData()
         self.plotWidget.setXRange(0, len(data))
@@ -234,6 +233,7 @@ class MainWindow(QMainWindow):
         self.plotWidget.plotItem.clear()
         self.plotWidget.plotItem.plot(data, pen=pg.mkPen(self.plotLineColor, width=self.plotLineWidth))
 
+
     def togglePlotWidgetMode(self):
         if self.plotWidgetMode == 0:
             self.plotWidgetMode = 1
@@ -242,12 +242,9 @@ class MainWindow(QMainWindow):
 
         self.updatePlotWidget()
 
+
     def updateSpectrogramWidget(self):
         newData = self.synthesizer.generateSpectrogramData()
-        '''
-        for i in range(len(self.spectrogramImage) - 1):
-            self.spectrogramImage[i] = self.spectrogramImage[i + 1]
-            '''
 
         self.spectrogramImage = np.roll(self.spectrogramImage, -self.spectrogramScrollSpeed, 0)
         height = self.spectrogramImage.shape[0]
@@ -255,13 +252,6 @@ class MainWindow(QMainWindow):
         self.spectrogramWidget.setImage(self.spectrogramImage.T, autoLevels=False)
         self.spectrogramWidget.imageItem.setRect(self.spectrogramWidget.view.viewRect())
 
-    def onChange(self, tabIndex):
-        '''
-        if tabIndex == 0:
-            self.synthesizer.arm()
-        else:
-            self.synthesizer.dearm()
-            '''
 
     ''' <-------------------- KEYBOARD INTERACTION --------------------> '''
     keys = [
@@ -282,6 +272,7 @@ class MainWindow(QMainWindow):
         Qt.Key.Key_Slash: Synthesizer.E5
     })
 
+
     def keyPressEvent(self, event):
         if event.isAutoRepeat():
             return
@@ -291,6 +282,7 @@ class MainWindow(QMainWindow):
             self.synthesizer.playNote(note)
 
         event.accept()
+
 
     def keyReleaseEvent(self, event):
         if event.isAutoRepeat():
@@ -302,31 +294,8 @@ class MainWindow(QMainWindow):
 
         event.accept()
 
+
     def initUI(self):
-        
-        exitAct = QAction(QIcon('exit.png'), '&Exit', self)
-        exitAct.setShortcut('Ctrl+Q')
-        exitAct.setStatusTip('Exit application')
-        exitAct.triggered.connect(QApplication.instance().quit)
-
-        self.statusBar()
-
-        menubar = self.menuBar()
-        fileMenu = menubar.addMenu('&File')
-        fileMenu.addAction(exitAct)
-
-        toolbar = QToolBar("My main toolbar")
-        toolbar.setIconSize(QSize(16,16))
-        self.addToolBar(toolbar)
-
-        '''
-        button_action = QAction(QIcon("bug.png"), "Arm Synthesizer", self)
-        button_action.setStatusTip("This is your button")
-        button_action.triggered.connect(self.toggleArmSynthesizer)
-        button_action.setCheckable(True)
-        toolbar.addAction(button_action)
-        #'''
-
         self.initMainWidget()
 
         self.resize(800, 800)
@@ -335,11 +304,13 @@ class MainWindow(QMainWindow):
         self.setWindowTitle('Synthesizer')
         self.show()
 
+
     def toggleArmSynthesizer(self, s):
         if (s == True):
             self.synthesizer.arm()
         else:
             self.synthesizer.dearm()
+
 
     def center(self):
         qr = self.frameGeometry()
@@ -347,6 +318,7 @@ class MainWindow(QMainWindow):
 
         qr.moveCenter(cp)
         self.move(qr.topLeft())
+
 
 def main():
     app = QApplication(sys.argv)
