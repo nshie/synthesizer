@@ -1,10 +1,11 @@
 import sys
 import numpy as np
-import PyQt6
 from PyQt6.QtWidgets import *
 from PyQt6.QtCore import *
+from PyQt6.QtGui import QIcon
 from synthesizer import *
 import pyqtgraph as pg
+import os
 
 pg.setConfigOption('background', 'k')
 pg.setConfigOption('foreground', 'w')
@@ -302,8 +303,16 @@ class MainWindow(QMainWindow):
         self.resize(800, 800)
         self.center()
 
-        self.setWindowTitle('Synthesizer')
+        self.setWindowTitle('2xOsc')
         self.show()
+
+        icon_path = ''
+        try:
+            icon_path = os.path.join(sys._MEIPASS, 'icon.ico')
+        except:
+            icon_path = 'icon.png'
+
+        self.setWindowIcon(QIcon(icon_path))
 
 
     def toggleArmSynthesizer(self, s):
