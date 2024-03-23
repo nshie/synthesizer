@@ -60,10 +60,12 @@ PyInstaller - packaging into an executable
 
 ## References
 
-https://stackoverflow.com/questions/19709018/convert-3-byte-stereo-wav-file-to-numpy-array\
+https://stackoverflow.com/questions/19709018/convert-3-byte-stereo-wav-file-to-numpy-array
+
 This source was used to help convert the generated audio wave into a bytestream to be played by the computer's speakers.
 
-https://gist.github.com/boylea/1a0b5442171f9afbf372\
+https://gist.github.com/boylea/1a0b5442171f9afbf372
+
 This Github repository was referenced for the creation of the spectrum analyzer.
 
 #### Documentation:
